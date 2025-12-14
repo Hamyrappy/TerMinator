@@ -5,7 +5,7 @@
 [![Python](https://img.shields.io/badge/Python-3.x-blue)]()
 
 ## 🎯 Project Goal
-This project investigates the "Rounding Problem" in 1.58-bit LLM quantization. We explore and benchmark different numerical strategies to compress high-precision matrices into ternary states $\{-1, 0, 1\}$ by solving the minimization problem:
+This project investigates the "Rounding Problem" in 1.58-bit LLM quantization. We explore and benchmark different numerical strategies to compress high-precision matrices into ternary states $\lbrace-1, 0, 1\rbrace$ by solving the minimization problem:
 
 $$ \min_{\alpha, Q} ||W - \alpha Q||_F^2 $$
 
