@@ -121,7 +121,7 @@ class SparseQuantizedDecomposition(BaseQuantizer):
     tau: float
 
     def __init__(self, tau: float):
-        super().__init__("Sparse + Quantized")
+        super().__init__(f"Sparse + Quantized ({tau})")
         self.tau = float(tau)
 
     @override
