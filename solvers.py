@@ -52,42 +52,32 @@ class ALSQuantizer(BaseQuantizer):
         self.keep_alpha_on_zero_q = bool(keep_alpha_on_zero_q)
 
     def _init_alpha(self, W: np.ndarray) -> np.ndarray | float:
-        # Simple, robust initialization: mean absolute value.
         if self.row_wise:
-            # (N, 1)
             alpha = np.mean(np.abs(W), axis=1, keepdims=True)
             return alpha + self.eps
         return float(np.mean(np.abs(W)) + self.eps)
 
     def _update_q(self, W: np.ndarray, alpha: np.ndarray | float) -> np.ndarray:
-        # Q-step: ternary projection minimizing ||W - alpha*Q||_F^2 given alpha.
-        # Uses thresholding via round(W/alpha) then clipping to {-1,0,1}.
         X = W / (alpha + self.eps)
-        # Keep Q float dtype to avoid repeated casts; or switch to int8 if you prefer.
         Q = np.clip(np.rint(X), -1.0, 1.0).astype(W.dtype, copy=False)
         return Q
 
     def _update_alpha(
         self, W: np.ndarray, Q: np.ndarray, alpha_prev: np.ndarray | float
     ) -> np.ndarray | float:
-        # alpha-step: least squares fit.
         if self.row_wise:
-            # (N,1)
             num = np.sum(W * Q, axis=1, keepdims=True)
             den = np.sum(Q * Q, axis=1, keepdims=True)
 
             if self.keep_alpha_on_zero_q:
-                # Keep previous alpha when den == 0
                 alpha = np.where(den > 0, num / (den + self.eps), alpha_prev)
             else:
-                # Set alpha to 0 when den == 0 (well-defined; avoids blow-ups)
                 alpha = np.where(den > 0, num / den, 0.0)
 
             if self.enforce_nonneg_alpha:
                 alpha = np.maximum(alpha, 0.0)
             return alpha
 
-        # scalar
         num = float(np.sum(W * Q))
         den = float(np.sum(Q * Q))
         if den > 0.0:
@@ -115,7 +105,6 @@ class ALSQuantizer(BaseQuantizer):
             Q = self._update_q(W, alpha)
             alpha_new = self._update_alpha(W, Q, alpha)
 
-            # Compute loss efficiently: sum of squares
             W_hat = alpha_new * Q
             diff = W - W_hat
             loss = float(np.square(diff).sum())
@@ -154,7 +143,11 @@ class SparseQuantizedDecomposition(BaseQuantizer):
                 misc={
                     "mask": mask,
                     "W_sparse": W_sparse,
-                    "dense_stats": getattr(stats_dense, "misc", None),
                 },
             ),
         )
+
+    def reconstruct(
+        self, Q_dense: np.ndarray, W_sparse: np.ndarray, beta: float
+    ) -> np.ndarray:
+        return W_sparse + beta * Q_dense

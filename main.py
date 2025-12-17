@@ -8,7 +8,7 @@ from solvers import ALSQuantizer, NaiveQuantizer, SparseQuantizedDecomposition
 def run_experiment():
     # 1. Setup Data
     print("Generating data...")
-    W = generate_synthetic_matrix("uniform", (1024, 1024))
+    W = generate_synthetic_matrix("gaussian", (1024, 1024))
 
     # 2. Setup Solvers
     solvers = [
