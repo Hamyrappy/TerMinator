@@ -1,7 +1,7 @@
 import numpy as np
 
 from data import generate_synthetic_matrix
-from metrics import frobenius_error, spectral_analysis
+from metrics import frobenius_error, compute_quantization_metrics
 from solvers import ALSQuantizer, NaiveQuantizer, SparseQuantizedDecomposition
 
 
@@ -24,7 +24,7 @@ def run_experiment():
         Q, alpha, stats = solver.quantize(W)
 
         error = frobenius_error(W, Q, alpha)
-        spec = spectral_analysis(W, Q, alpha)
+        spec = compute_quantization_metrics(W, Q, alpha, k=50)
 
         results.append((solver, stats, error, spec))
 
@@ -32,26 +32,31 @@ def run_experiment():
     Q, alpha, stats = sparse_q.quantize(W)
     Q_hat = sparse_q.reconstruct(Q, stats.misc["W_sparse"], alpha)
     error = frobenius_error(W, Q_hat, 1)
-    spec = spectral_analysis(W, Q_hat, 1)
+    spec = compute_quantization_metrics(W, Q_hat, 1,k=50)
     results.append((sparse_q, stats, error, spec))
 
-    header = (
-        f"{'Solver':<25} | {'Error':<9} | {'σ1 err':<8} | "
-        f"{'SpecGapΔ':<8} | {'SpecRMSE':<9} | {'EnergyΔ':<9}| {'Time(s)':<8}"
-    )
+    used_sparse = min(Q.shape) > 1024
+    header_cols = ['Solver', 'Time(s)', 'FrobErr', 'DirErr', 'RelSpecGap']
+    if not used_sparse:
+        header_cols.extend(['CondErr','EffRankΔ'])
+    header = f"{header_cols[0]:<25} | "
+    header += " | ".join(f"{col:<8}" for col in header_cols[1:])
     print(header)
     print("-" * len(header))
     for solver, stats, error, spec in results:
-        print(
+        row_values = (
             f"{solver.name:<25} | "
-            f"{error:<9.4f} | "
-            f"{spec['top_singular_value_err']:<8.4f} | "
-            f"{spec['spectral_gap_diff']:<8.4f} | "
-            f"{spec['singular_values_rmse']:<9.4f} | "
-            f"{spec['spectral_energy_err']:<9.4f} | "
-            f"{stats.time:<8.3f}"
+            f"{stats.time:<8.3f} | "
+            f"{error:<8.4f} | "
+            f"{spec['weighted_dir_err']:<8.2f} | "
+            f"{spec['rel_gap_error']:<10.4f} | "
         )
-
+        if not used_sparse:
+            row_values += (
+                f"{spec['condition_number_error']:<8.4f} | "
+                f"{spec.get('effective_rank_change', 0):<8.4f}"
+                )
+        print(row_values)
 
 if __name__ == "__main__":
     run_experiment()
