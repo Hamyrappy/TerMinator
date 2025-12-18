@@ -1,26 +1,22 @@
 from __future__ import annotations
 
 import time
-from typing import Tuple, cast, override
+from typing import Any, Literal, Tuple, cast, override
 
 import numpy as np
 
 from base import BaseQuantizer, ScaleType, Stats
-from metrics import frobenius_error
 
 
 # see https://arxiv.org/pdf/2402.17764
 class NaiveQuantizer(BaseQuantizer):
-    def __init__(self, eps: float = 1e-8,  init_with_power: bool = False):
-        super().__init__("Naive (BitNet-ish)", init_with_power)
+    def __init__(self, eps: float = 1e-8):
+        super().__init__("Naive (BitNet-ish)")
         self.eps = eps
 
     @override
     def quantize(self, W: np.ndarray) -> Tuple[np.ndarray, ScaleType, Stats]:
         start_time = time.time()
-
-        if self.init_with_power:
-            W = self.initialize_with_svd(W)
 
         alpha = float(np.mean(np.abs(W)))
         if alpha <= 0.0:
@@ -40,15 +36,14 @@ class NaiveQuantizer(BaseQuantizer):
 class ALSQuantizer(BaseQuantizer):
     def __init__(
         self,
-        max_iter: int = 5,
+        max_iter: int = 50,
         row_wise: bool = False,
         eps: float = 1e-8,
         enforce_nonneg_alpha: bool = True,
         keep_alpha_on_zero_q: bool = False,
-        init_with_power: bool = False,
     ):
         name = f"ALS{' (Row-wise)' if row_wise else ''}"
-        super().__init__(name, init_with_power)
+        super().__init__(name)
         self.max_iter = int(max_iter)
         self.row_wise = bool(row_wise)
         self.eps = float(eps)
@@ -102,9 +97,6 @@ class ALSQuantizer(BaseQuantizer):
         """
         start = time.time()
 
-        if self.init_with_power:
-            W = self.initialize_with_svd(W)
-
         alpha = self._init_alpha(W)
         loss_history: list[float] = []
 
@@ -123,36 +115,79 @@ class ALSQuantizer(BaseQuantizer):
         return Q, alpha, Stats(time=elapsed, misc={"loss_history": loss_history})
 
 
-# https://arxiv.org/pdf/2208.07339
 class SparseQuantizedDecomposition(BaseQuantizer):
     tau: float
+    adaptive: bool
 
-    def __init__(self, tau: float, init_with_power: bool = False):
-        super().__init__(f"Sparse + Quantized ({tau})", init_with_power)
-        self.tau = float(tau)
+    def __init__(self, tau: float | None = None, adaptive: bool = False):
+        """
+        If adaptive is False: use fixed tau (must be not None).
+        If adaptive is True: ignore tau and choose it from W statistics.
+        """
+        name = f"Sparse + Quantized" if adaptive else f"Sparse + Quantized (tau={tau})"
+        super().__init__(name)
+        self.tau = float(tau) if tau is not None else 0.0
+        self.adaptive = adaptive
+
+    def _compute_tau(self, W: np.ndarray, q: float) -> float:
+        """
+        Choose tau based on |W| statistics.
+        Examples:
+          - std-based: mu + k * sigma
+          - quantile-based: e.g. 99.9% quantile (keep top 0.1% as sparse),
+            similar to “≈0.1% of feature dimensions” in LLM.int8(). [web:64]
+        """
+        absW = np.abs(W).ravel()
+
+        tau_q = float(np.quantile(absW, q))
+
+        return tau_q
 
     @override
-    def quantize(self, W: np.ndarray) -> Tuple[np.ndarray, float, Stats]:
+    def quantize(
+        self,
+        W: np.ndarray,
+        quantizer: Literal["bitnet", "als"] = "bitnet",
+        tau_quantile: float = 0.99,
+        quantizer_init_kwargs: dict[Any, Any] | None = None,
+        quantizer_kwargs: dict[Any, Any] | None = None,
+    ) -> Tuple[np.ndarray, ScaleType, Stats]:
         start_time = time.time()
+        if quantizer_init_kwargs is None:
+            quantizer_init_kwargs = {}
+        if quantizer_kwargs is None:
+            quantizer_kwargs = {}
 
-        if self.init_with_power:
-            W = self.initialize_with_svd(W)
+        if self.adaptive:
+            tau = self._compute_tau(W, q=tau_quantile)
+        else:
+            tau = self.tau
 
-        mask = np.abs(W) > self.tau
+        mask = np.abs(W) > tau
         W_sparse = W * mask
         W_dense = W - W_sparse
 
-        Q_dense, beta, stats_dense = NaiveQuantizer().quantize(W_dense)
+        if quantizer == "bitnet":
+            solver = NaiveQuantizer(**quantizer_init_kwargs)
+        elif quantizer == "als":
+            solver = ALSQuantizer(**quantizer_init_kwargs)
+        else:
+            raise ValueError(f"Unknown quantizer '{quantizer}'")
+
+        Q_dense, alpha, inner_stats = solver.quantize(W_dense, **quantizer_kwargs)
 
         elapsed = time.time() - start_time
         return (
             Q_dense,
-            beta,
+            alpha,
             Stats(
                 time=elapsed,
                 misc={
                     "mask": mask,
                     "W_sparse": W_sparse,
+                    "tau": tau,
+                    "inner_stats": inner_stats,
+                    "sparse_fraction": float(mask.sum()) / mask.size,
                 },
             ),
         )
@@ -161,4 +196,3 @@ class SparseQuantizedDecomposition(BaseQuantizer):
         self, Q_dense: np.ndarray, W_sparse: np.ndarray, beta: float
     ) -> np.ndarray:
         return W_sparse + beta * Q_dense
-
