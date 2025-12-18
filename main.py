@@ -1,11 +1,12 @@
 import numpy as np
+import matplotlib.pyplot as plt
 
 from data import generate_synthetic_matrix
 from metrics import frobenius_error, compute_quantization_metrics
 from solvers import ALSQuantizer, NaiveQuantizer, SparseQuantizedDecomposition
 
 
-def run_experiment():
+def run_experiment(save_path="singular_values.png"):
     # 1. Setup Data
     print("Generating data...")
     W = generate_synthetic_matrix("gaussian", (1024, 1024))
@@ -13,6 +14,7 @@ def run_experiment():
     # 2. Setup Solvers
     solvers = [
         NaiveQuantizer(),
+        #NaiveQuantizer(init_with_power=True),
         ALSQuantizer(max_iter=5, row_wise=False),
         ALSQuantizer(max_iter=5, row_wise=True),
     ]
@@ -43,6 +45,7 @@ def run_experiment():
     header += " | ".join(f"{col:<8}" for col in header_cols[1:])
     print(header)
     print("-" * len(header))
+    sv_dict = {}
     for solver, stats, error, spec in results:
         row_values = (
             f"{solver.name:<25} | "
@@ -56,7 +59,24 @@ def run_experiment():
                 f"{spec['condition_number_error']:<8.4f} | "
                 f"{spec.get('effective_rank_change', 0):<8.4f}"
                 )
+        sv_dict[solver.name] = spec['s_Q']
+        sv_dict['original'] = spec['s_W']
         print(row_values)
+        
+    plt.figure(figsize=(10,6))
+    for name, s_Q in sv_dict.items():
+        plt.hist(np.log1p(s_Q), bins=50, alpha=0.5, density=True, label=name)
+    
+    plt.xlabel('log(1 + singular value)')
+    plt.ylabel('Density')
+    plt.title('Singular Value Distributions of Quantized Matrices')
+    plt.legend()
+    plt.grid(True, ls='--', lw=0.5)
+
+    if save_path is not None:
+        plt.savefig(save_path, bbox_inches='tight', dpi=300)
+        print(f"Figure saved to {save_path}")
+
 
 if __name__ == "__main__":
     run_experiment()

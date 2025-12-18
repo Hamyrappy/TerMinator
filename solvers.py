@@ -11,13 +11,16 @@ from metrics import frobenius_error
 
 # see https://arxiv.org/pdf/2402.17764
 class NaiveQuantizer(BaseQuantizer):
-    def __init__(self, eps: float = 1e-8):
-        super().__init__("Naive (BitNet-ish)")
+    def __init__(self, eps: float = 1e-8,  init_with_power: bool = False):
+        super().__init__("Naive (BitNet-ish)", init_with_power)
         self.eps = eps
 
     @override
     def quantize(self, W: np.ndarray) -> Tuple[np.ndarray, ScaleType, Stats]:
         start_time = time.time()
+
+        if self.init_with_power:
+            W = self.initialize_with_svd(W)
 
         alpha = float(np.mean(np.abs(W)))
         if alpha <= 0.0:
@@ -42,9 +45,10 @@ class ALSQuantizer(BaseQuantizer):
         eps: float = 1e-8,
         enforce_nonneg_alpha: bool = True,
         keep_alpha_on_zero_q: bool = False,
+        init_with_power: bool = False,
     ):
         name = f"ALS{' (Row-wise)' if row_wise else ''}"
-        super().__init__(name)
+        super().__init__(name, init_with_power)
         self.max_iter = int(max_iter)
         self.row_wise = bool(row_wise)
         self.eps = float(eps)
@@ -98,6 +102,9 @@ class ALSQuantizer(BaseQuantizer):
         """
         start = time.time()
 
+        if self.init_with_power:
+            W = self.initialize_with_svd(W)
+
         alpha = self._init_alpha(W)
         loss_history: list[float] = []
 
@@ -120,13 +127,16 @@ class ALSQuantizer(BaseQuantizer):
 class SparseQuantizedDecomposition(BaseQuantizer):
     tau: float
 
-    def __init__(self, tau: float):
-        super().__init__(f"Sparse + Quantized ({tau})")
+    def __init__(self, tau: float, init_with_power: bool = False):
+        super().__init__(f"Sparse + Quantized ({tau})", init_with_power)
         self.tau = float(tau)
 
     @override
     def quantize(self, W: np.ndarray) -> Tuple[np.ndarray, float, Stats]:
         start_time = time.time()
+
+        if self.init_with_power:
+            W = self.initialize_with_svd(W)
 
         mask = np.abs(W) > self.tau
         W_sparse = W * mask
@@ -151,3 +161,4 @@ class SparseQuantizedDecomposition(BaseQuantizer):
         self, Q_dense: np.ndarray, W_sparse: np.ndarray, beta: float
     ) -> np.ndarray:
         return W_sparse + beta * Q_dense
+
