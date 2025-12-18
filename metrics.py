@@ -70,6 +70,8 @@ def compute_quantization_metrics(W: np.ndarray, Q: np.ndarray, alpha: float, k: 
         "effective_rank_change": float(effective_rank_change) if effective_rank_change is not None else None,
         "out_correlation": float(rho_out) if rho_out is not None else None,
         "k_used": k_sub,
-        "is_sparse_mode": use_sparse
+        "is_sparse_mode": use_sparse,
+        "s_W": s_W,
+        "s_Q": s_Q
     }
 
