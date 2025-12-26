@@ -5,7 +5,7 @@
 [![Python](https://img.shields.io/badge/Python-3.x-blue)]()
 
 ## 🎯 Project Goal
-This project investigates the "Rounding Problem" in 1.58-bit LLM quantization. We explore and benchmark different numerical strategies to compress high-precision matrices into ternary states $\lbrace-1, 0, 1\rbrace$ by solving the minimization problem:
+This project investigates the "Rounding Problem" in 1.58-bit LLM quantization. We explore and benchmark different numerical strategies to compress high-precision matrices into ternary states $\lbrace-1, 0, 1\rbrace$.
 
 $$ \min_{\alpha, Q} ||W - \alpha Q||_F^2 $$
 
@@ -32,17 +32,17 @@ We implement and compare a hierarchy of approximation strategies:
 ## 🚀 Quick Start
 
 ### 1. Installation
-Clone the repository and install dependencies (mainly `numpy`, `scipy`, `matplotlib`):
+Clone the repository and install dependencies using Poetry:
 ```bash
-git clone https://github.com/your-team/TerMinator.git
+git clone https://github.com/Hamyrappy/TerMinator.git
 cd TerMinator
-pip install -r requirements.txt
+poetry install
 ```
 
 ### 2. Run Benchmarks
 To reproduce our experiments and see the comparison between Naive and ALS methods:
 ```bash
-python main.py
+poetry run python main.py
 ```
 *This will generate synthetic data, run all solvers, and print the Frobenius error report.*
 
